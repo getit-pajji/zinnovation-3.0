@@ -30,16 +30,23 @@ import {
 } from 'lucide-react';
 
 // --- !!! IMPORTANT FIREBASE CONFIG !!! ---
-// This configuration is provided by the environment.
-const firebaseConfig = JSON.parse(
-  typeof __firebase_config !== 'undefined'
-    ? __firebase_config
-    : '{}'
-);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+// This configuration is now hybrid. It works in the Canvas environment
+// AND in a standard Vite deployment (e.g., Vercel).
+
+// 1. Get Firebase Config
+const rawFirebaseConfig =
+  (typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+const firebaseConfig = JSON.parse(rawFirebaseConfig);
+
+// 2. Get App ID
+const appId =
+  (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
+
+// 3. Get Auth Token
 const initialAuthToken =
-  typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+  (typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined);
 // --- End of Config ---
+
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
