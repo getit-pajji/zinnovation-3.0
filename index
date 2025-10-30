@@ -1,0 +1,2394 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import {
+  getAuth,
+  signInAnonymously,
+  signInWithCustomToken,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  addDoc,
+  onSnapshot,
+  collection,
+  query,
+  where,
+  getDocs,
+  writeBatch,
+  serverTimestamp,
+  deleteDoc,
+} from 'firebase/firestore';
+import { setLogLevel } from 'firebase/firestore';
+import { 
+  LayoutDashboard, Map as MapIcon, User, BarChartHorizontal, PieChart, 
+  Sun, Moon, Languages, X, ArrowLeft, TrendingUp, Minus, Plus,
+  ScrollText, Wallet, LogOut, CheckCircle, XCircle, Info, Landmark,
+  CloudSun, Thermometer, Zap // New icons for Weather
+} from 'lucide-react';
+
+// --- !!! IMPORTANT FIREBASE CONFIG !!! ---
+// This configuration is provided by the environment.
+const firebaseConfig = JSON.parse(
+  typeof __firebase_config !== 'undefined'
+    ? __firebase_config
+    : '{}'
+);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const initialAuthToken =
+  typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+// --- End of Config ---
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+setLogLevel('debug'); // Enable detailed Firestore logs in the console
+
+// --- I18N (Multilingual) Setup ---
+const translations = {
+  en: {
+    // Nav
+    dashboard: 'Dashboard',
+    liveMap: 'Live Map',
+    myPortfolio: 'My Portfolio',
+    marketplace: 'Marketplace',
+    analytics: 'Analytics',
+    guidelines: 'Guidelines', // New
+    status: 'Status',
+    online: 'All Systems Online',
+    wallet: 'Wallet', // New
+    logout: 'Logout', // New
+    // Dashboard
+    gridDashboard: 'Grid Dashboard',
+    totalGen: 'Total Power Generation',
+    totalCons: 'Total Power Consumption',
+    gridStatus: 'Grid Status',
+    live: 'Live',
+    blockMonitor: 'Live Block Monitor',
+    block: 'Block',
+    liveGen: 'Live Generation',
+    avgHealth: 'Avg. Panel Health',
+    panelCount: 'Panel Count',
+    seeding: 'Seeding initial block data...',
+    // Weather Component (New)
+    weatherTitle: 'Weather & Solar Report',
+    location: 'City-Wide Area',
+    solarIrradiance: 'Solar Irradiance',
+    irradianceUnit: 'W/m²',
+    temperature: 'Temperature',
+    forecast: 'Generation Forecast',
+    conditions: 'Conditions',
+    // Simulated Weather (New)
+    sunny: 'Sunny',
+    partlyCloudy: 'Partly Cloudy',
+    cloudy: 'Cloudy',
+    high: 'High',
+    moderate: 'Moderate',
+    low: 'Low',
+    // Map
+    cityLiveMap: 'City Live Map',
+    mapSubtitle: 'Click any block to see detailed stats. Animated borders show live electricity flow.',
+    detailedBlockView: 'Detailed View',
+    backToCity: 'Back to City Map',
+    houses: 'Houses',
+    grids: 'Grids',
+    // Portfolio
+    portfolio: 'My Portfolio',
+    userId: 'User ID (Share this to trade)',
+    panelHealth: 'Panel Health',
+    availableCredits: 'Available Credits',
+    netEnergy: 'Net Energy',
+    energyFlow: 'Live Energy Flow',
+    totalGeneration: 'Total Generation',
+    totalConsumption: 'Total Consumption',
+    surplusDeficit: 'Surplus / Deficit',
+    actions: 'Actions',
+    simulateConsumption: 'Simulate consuming energy from the grid.',
+    simulate: 'Simulate 10 kWh Consumption',
+    loadingPortfolio: 'Loading your portfolio...',
+    // Marketplace
+    market: 'Energy Marketplace',
+    yourCredits: 'Your available credits',
+    sellTitle: 'Sell Energy Credits',
+    buyTitle: 'Buy Energy Credits',
+    amount: 'Amount (kWh)',
+    price: 'Price (Credits/kWh)',
+    postSell: 'Post Sell Order',
+    postBuy: 'Post Buy Order',
+    buyOrders: 'Buy Orders (Bids)',
+    sellOrders: 'Sell Orders (Asks)',
+    action: 'Action',
+    noBuyOrders: 'No buy orders.',
+    noSellOrders: 'No sell orders.',
+    cancel: 'Cancel',
+    sellTo: 'Sell to',
+    buyFrom: 'Buy from',
+    priceAnalyzer: 'Price Analyzer',
+    highestBid: 'Highest Bid',
+    lowestAsk: 'Lowest Ask',
+    spread: 'Spread',
+    volume: '24h Volume (Simulated)',
+    noData: 'N/A',
+    // Analytics
+    analyticsTitle: 'Grid Analytics',
+    analyticsChartTitle: 'Weekly Generation vs. Consumption',
+    generation: 'Generation',
+    consumption: 'Consumption',
+    // Modals
+    notification: 'Notification',
+    ok: 'OK',
+    fillOrder: 'Fill Order',
+    fillAmount: 'Amount to fill',
+    available: 'Available',
+    confirm: 'Confirm',
+    // Payment Modal (New)
+    paymentTitle: 'My Wallet & Payments',
+    deposit: 'Deposit',
+    withdraw: 'Withdraw',
+    bankDetails: 'Bank Details',
+    depositDesc: 'Deposit funds to buy credits.',
+    depositAmount: 'Amount to Deposit (INR)',
+    depositBtn: 'Simulate Deposit',
+    withdrawDesc: 'Withdraw earnings to your bank.',
+    withdrawAmount: 'Amount to Withdraw (INR)',
+    withdrawBtn: 'Simulate Withdrawal',
+    bankDesc: 'Link your bank account for withdrawals.',
+    accountHolder: 'Account Holder Name',
+    accountNumber: 'Account Number',
+    ifscCode: 'IFSC Code',
+    saveBankBtn: 'Save Details',
+    // Guidelines Page (New)
+    guidelinesTitle: 'Government Guidelines & Best Practices',
+    guideline1Title: '1. Regular Panel Maintenance',
+    guideline1Desc: 'Clean your solar panels quarterly to ensure maximum efficiency. Dust and debris can reduce power generation by up to 25%.',
+    guideline2Title: '2. Grid Safety Standards',
+    guideline2Desc: 'Ensure your inverter and grid connection components are certified and comply with all local electricity board safety standards to prevent grid failure.',
+    guideline3Title: '3. Fair Trading Policy',
+    guideline3Desc: 'All marketplace transactions are final. Do not engage in price manipulation. All trades are monitored to ensure a fair market for all participants.',
+    // Analytics Page (New)
+    panelLifecycle: 'Panel Lifecycle',
+    avgLifespan: 'Avg. Lifespan',
+    years: 'Years',
+    efficiencyDrop: 'Efficiency Drop (per year)',
+    projections: 'Revenue & Consumption Projections (Next 30 Days)',
+    projectedRevenue: 'Projected Revenue',
+    projectedConsumption: 'Projected Consumption',
+    // Toast Notifications (New)
+    orderPlaced: 'Order Placed',
+    orderSuccess: 'Order successfully placed on the market.',
+    orderFilled: 'Order Filled',
+    buySuccess: 'Successfully bought {amount} kWh!',
+    sellSuccess: 'Successfully sold {amount} kWh!',
+    orderCanceled: 'Order canceled.',
+    // Errors
+    errNoCreditsSell: 'Error: Not enough credits to place sell order.',
+    errPostOrder: 'Error posting order.',
+    errCancelOrder: 'Failed to cancel order.',
+    errNoCreditsBuy: 'Not enough credits to buy!',
+    errSellerNotFound: 'Seller portfolio not found',
+    errBuyNoCredits: "You don't have enough credits to sell!",
+    errBuyerNotFound: 'Buyer portfolio not found',
+    errBuyerNoCredits: 'Buyer does not have enough credits for this transaction.',
+    errFillOrder: 'Error filling order',
+    errSimulate: 'Failed to simulate consumption.',
+    errNoCreditsConsume: 'Not enough credits to consume!',
+  },
+  hi: {
+    // Nav
+    dashboard: 'डैशबोर्ड',
+    liveMap: 'लाइव नक्शा',
+    myPortfolio: 'मेरा पोर्टफोलियो',
+    marketplace: 'बाज़ार',
+    analytics: 'एनालिटिक्स',
+    guidelines: 'दिशानिर्देश', // New
+    status: 'स्थिति',
+    online: 'सभी सिस्टम ऑनलाइन हैं',
+    wallet: 'वॉलेट', // New
+    logout: 'लॉग आउट', // New
+    // Dashboard
+    gridDashboard: 'ग्रिड डैशबोर्ड',
+    totalGen: 'कुल बिजली उत्पादन',
+    totalCons: 'कुल बिजली की खपत',
+    gridStatus: 'ग्रिड स्थिति',
+    live: 'लाइव',
+    blockMonitor: 'लाइव ब्लॉक मॉनिटर',
+    block: 'ब्लॉक',
+    liveGen: 'लाइव उत्पादन',
+    avgHealth: 'औसत पैनल स्वास्थ्य',
+    panelCount: 'पैनल गणना',
+    seeding: 'प्रारंभिक ब्लॉक डेटा सीड किया जा रहा है...',
+    // Weather Component (New)
+    weatherTitle: 'मौसम और सौर रिपोर्ट',
+    location: 'शहर-व्यापी क्षेत्र',
+    solarIrradiance: 'सौर विकिरण',
+    irradianceUnit: 'W/m²',
+    temperature: 'तापमान',
+    forecast: 'उत्पादन पूर्वानुमान',
+    conditions: 'मौसम',
+    // Simulated Weather (New)
+    sunny: 'धूप',
+    partlyCloudy: 'आंशिक रूप से बादल छाए रहेंगे',
+    cloudy: 'बादल छाए रहेंगे',
+    high: 'उच्च',
+    moderate: 'मध्यम',
+    low: 'कम',
+    // Map
+    cityLiveMap: 'शहर का लाइव नक्शा',
+    mapSubtitle: 'विस्तृत आँकड़े देखने के लिए किसी भी ब्लॉक पर क्लिक करें। एनिमेटेड बॉर्डर लाइव बिजली प्रवाह दिखाते हैं।',
+    detailedBlockView: 'विस्तृत दृश्य',
+    backToCity: 'शहर के नक्शे पर वापस',
+    houses: 'घर',
+    grids: 'ग्रिड',
+    // Portfolio
+    portfolio: 'मेरा पोर्टफोलियो',
+    userId: 'यूजर आईडी (ट्रेड के लिए शेयर करें)',
+    panelHealth: 'पैनल स्वास्थ्य',
+    availableCredits: 'उपलब्ध क्रेडिट',
+    netEnergy: 'शुद्ध ऊर्जा',
+    energyFlow: 'लाइव ऊर्जा प्रवाह',
+    totalGeneration: 'कुल उत्पादन',
+    totalConsumption: 'कुल खपत',
+    surplusDeficit: 'अधिशेष / घाटा',
+    actions: 'कार्रवाई',
+    simulateConsumption: 'ग्रिड से ऊर्जा की खपत का अनुकरण करें।',
+    simulate: '10 kWh खपत का अनुकरण करें',
+    loadingPortfolio: 'आपका पोर्टफोलियो लोड हो रहा है...',
+    // Marketplace
+    market: 'ऊर्जा बाज़ार',
+    yourCredits: 'आपके उपलब्ध क्रेडिट',
+    sellTitle: 'ऊर्जा क्रेडिट बेचें',
+    buyTitle: 'ऊर्जा क्रेडिट खरीदें',
+    amount: 'राशि (kWh)',
+    price: 'मूल्य (क्रेडिट/kWh)',
+    postSell: 'बिक्री ऑर्डर पोस्ट करें',
+    postBuy: 'खरीद ऑर्डर पोस्ट करें',
+    buyOrders: 'खरीद ऑर्डर (बोली)',
+    sellOrders: 'बिक्री ऑर्डर (पूछ)',
+    action: 'कार्रवाई',
+    noBuyOrders: 'कोई खरीद ऑर्डर नहीं।',
+    noSellOrders: 'कोई बिक्री ऑर्डर नहीं।',
+    cancel: 'रद्द करें',
+    sellTo: 'को बेचें',
+    buyFrom: 'से खरीदें',
+    priceAnalyzer: 'मूल्य विश्लेषक',
+    highestBid: 'उच्चतम बोली',
+    lowestAsk: 'न्यूनतम पूछ',
+    spread: 'स्प्रेड',
+    volume: '24घं वॉल्यूम (सिम्युलेटेड)',
+    noData: 'N/A',
+    // Analytics
+    analyticsTitle: 'ग्रिड एनालिटिक्स',
+    analyticsChartTitle: 'साप्ताहिक उत्पादन बनाम खपत',
+    generation: 'उत्पादन',
+    consumption: 'खपत',
+    // Modals
+    notification: 'सूचना',
+    ok: 'ठीक है',
+    fillOrder: 'ऑर्डर भरें',
+    fillAmount: 'भरने के लिए राशि',
+    available: 'उपलब्ध',
+    confirm: 'पुष्टि करें',
+    // Payment Modal (New)
+    paymentTitle: 'मेरा वॉलेट और भुगतान',
+    deposit: 'जमा करें',
+    withdraw: 'निकालें',
+    bankDetails: 'बैंक विवरण',
+    depositDesc: 'क्रेडिट खरीदने के लिए धनराशि जमा करें।',
+    depositAmount: 'जमा करने के लिए राशि (INR)',
+    depositBtn: 'जमा का अनुकरण करें',
+    withdrawDesc: 'अपनी कमाई को अपने बैंक में निकालें।',
+    withdrawAmount: 'निकालने के लिए राशि (INR)',
+    withdrawBtn: 'निकासी का अनुकरण करें',
+    bankDesc: 'निकासी के लिए अपना बैंक खाता लिंक करें।',
+    accountHolder: 'खाता धारक का नाम',
+    accountNumber: 'खाता संख्या',
+    ifscCode: 'IFSC कोड',
+    saveBankBtn: 'विवरण सहेजें',
+    // Guidelines Page (New)
+    guidelinesTitle: 'सरकारी दिशानिर्देश और सर्वोत्तम प्रथाएं',
+    guideline1Title: '1. नियमित पैनल रखरखाव',
+    guideline1Desc: 'अधिकतम दक्षता सुनिश्चित करने के लिए अपने सौर पैनलों को त्रैमासिक रूप से साफ करें। धूल और मलबे से बिजली उत्पादन 25% तक कम हो सकता है।',
+    guideline2Title: '2. ग्रिड सुरक्षा मानक',
+    guideline2Desc: ' सुनिश्चित करें कि आपका इन्वर्टर और ग्रिड कनेक्शन घटक प्रमाणित हैं और ग्रिड विफलता को रोकने के लिए सभी स्थानीय बिजली बोर्ड सुरक्षा मानकों का पालन करते हैं।',
+    guideline3Title: '3. उचित व्यापार नीति',
+    guideline3Desc: 'सभी बाज़ार लेनदेन अंतिम हैं। मूल्य हेरफेर में संलग्न न हों। सभी प्रतिभागियों के लिए एक उचित बाजार सुनिश्चित करने के लिए सभी ट्रेडों की निगरानी की जाती है।',
+    // Analytics Page (New)
+    panelLifecycle: 'पैनल जीवनचक्र',
+    avgLifespan: 'औसत जीवनकाल',
+    years: 'वर्ष',
+    efficiencyDrop: 'दक्षता में गिरावट (प्रति वर्ष)',
+    projections: 'राजस्व और खपत अनुमान (अगले 30 दिन)',
+    projectedRevenue: 'अनुमानित राजस्व',
+    projectedConsumption: 'अनुमानित खपत',
+    // Toast Notifications (New)
+    orderPlaced: 'ऑर्डर दिया गया',
+    orderSuccess: 'ऑर्डर बाजार पर सफलतापूर्वक रखा गया।',
+    orderFilled: 'ऑर्डर पूरा हुआ',
+    buySuccess: 'सफलतापूर्वक {amount} kWh खरीदा!',
+    sellSuccess: 'सफलतापूर्वक {amount} kWh बेचा!',
+    orderCanceled: 'ऑर्डर रद्द किया गया।',
+    // Errors
+    errNoCreditsSell: 'त्रुटि: बिक्री ऑर्डर देने के लिए पर्याप्त क्रेडिट नहीं हैं।',
+    errPostOrder: 'ऑर्डर पोस्ट करने में त्रुटि।',
+    errCancelOrder: 'ऑर्डर रद्द करने में विफल।',
+    errNoCreditsBuy: 'खरीदने के लिए पर्याप्त क्रेडिट नहीं हैं!',
+    errSellerNotFound: 'विक्रेता का पोर्टफोलियो नहीं मिला',
+    errBuyNoCredits: 'आपके पास बेचने के लिए पर्याप्त क्रेडिट नहीं हैं!',
+    errBuyerNotFound: 'खरीदार का पोर्टफोलियो नहीं मिला',
+    errBuyerNoCredits: 'इस लेनदेन के लिए खरीदार के पास पर्याप्त क्रेडिट नहीं हैं।',
+    errFillOrder: 'ऑर्डर भरने में त्रुटि',
+    errSimulate: 'खपत का अनुकरण करने में विफल।',
+    errNoCreditsConsume: 'खपत के लिए पर्याप्त क्रेडिट नहीं हैं!',
+  },
+  ta: {
+    // Nav
+    dashboard: 'டாஷ்போர்டு',
+    liveMap: 'லைவ் வரைபடம்',
+    myPortfolio: 'எனது போர்ட்ஃபோலியோ',
+    marketplace: 'சந்தை',
+    analytics: 'பகுப்பாய்வு',
+    guidelines: 'வழிகாட்டுதல்கள்', // New
+    status: 'நிலை',
+    online: 'அனைத்து அமைப்புகளும் ஆன்லைனில் உள்ளன',
+    wallet: 'வாலட்', // New
+    logout: 'வெளியேறு', // New
+    // Dashboard
+    gridDashboard: 'கிரிட் டாஷ்போர்டு',
+    totalGen: 'மொத்த மின் உற்பத்தி',
+    totalCons: 'மொத்த மின் நுகர்வு',
+    gridStatus: 'கிரிட் நிலை',
+    live: 'லைவ்',
+    blockMonitor: 'லைவ் பிளாக் மானிட்டர்',
+    block: 'பிளாக்',
+    liveGen: 'லைவ் உற்பத்தி',
+    avgHealth: 'சராசரி பேனல் ஆரோக்கியம்',
+    panelCount: 'பேனல் எண்ணிக்கை',
+    seeding: 'ஆரம்ப பிளாக் தரவு இடப்படுகிறது...',
+    // Weather Component (New)
+    weatherTitle: 'வானிலை & சூரிய அறிக்கை',
+    location: 'நகரம் தழுவிய பகுதி',
+    solarIrradiance: 'சூரிய கதிர்வீச்சு',
+    irradianceUnit: 'W/m²',
+    temperature: 'வெப்பநிலை',
+    forecast: 'உற்பத்தி முன்னறிவிப்பு',
+    conditions: 'வானிலை',
+    // Simulated Weather (New)
+    sunny: 'வெயில்',
+    partlyCloudy: 'பகுதி மேகமூட்டம்',
+    cloudy: 'மேகமூட்டம்',
+    high: 'அதிகம்',
+    moderate: 'மிதமானது',
+    low: 'குறைவு',
+    // Map
+    cityLiveMap: 'நகர லைவ் வரைபடம்',
+    mapSubtitle: 'விரிவான புள்ளிவிவரங்களைக் காண எந்த பிளாக்கையும் கிளிக் செய்யவும்.',
+    detailedBlockView: 'விரிவான Ansicht',
+    backToCity: 'நகர வரைபடத்திற்குத் திரும்பு',
+    houses: 'வீடுகள்',
+    grids: 'கிரிட்கள்',
+    // Portfolio
+    portfolio: 'எனது போர்ட்ஃபோலியோ',
+    userId: 'பயனர் ஐடி (வர்த்தகம் செய்ய பகிரவும்)',
+    panelHealth: 'பேனல் ஆரோக்கியம்',
+    availableCredits: 'கிடைக்கக்கூடிய கிரெடிட்கள்',
+    netEnergy: 'நிகர ஆற்றல்',
+    energyFlow: 'லைவ் ஆற்றல் ஓட்டம்',
+    totalGeneration: 'மொத்த உற்பத்தி',
+    totalConsumption: 'மொத்த நுகர்வு',
+    surplusDeficit: 'உபரி / பற்றாக்குறை',
+    actions: 'செயல்கள்',
+    simulateConsumption: 'கிரிட்டிலிருந்து ஆற்றல் நுகர்வை உருவகப்படுத்தவும்.',
+    simulate: '10 kWh நுகர்வை உருவகப்படுத்தவும்',
+    loadingPortfolio: 'உங்கள் போர்ட்ஃபோலியோ ஏற்றப்படுகிறது...',
+    // Marketplace
+    market: 'ஆற்றல் சந்தை',
+    yourCredits: 'உங்களிடம் உள்ள கிரெடிட்கள்',
+    sellTitle: 'ஆற்றல் கிரெடிட்களை விற்கவும்',
+    buyTitle: 'ஆற்றல் கிரெடிட்களை வாங்கவும்',
+    amount: 'அளவு (kWh)',
+    price: 'விலை (கிரெடிட்கள்/kWh)',
+    postSell: 'விற்பனை ஆர்டரை இடுகையிடவும்',
+    postBuy: 'வாங்குதல் ஆர்டரை இடுகையிடவும்',
+    buyOrders: 'வாங்குதல் ஆர்டர்கள் (ஏலங்கள்)',
+    sellOrders: 'விற்பனை ஆர்டர்கள் (கேட்பவை)',
+    action: 'செயல்',
+    noBuyOrders: 'வாங்குதல் ஆர்டர்கள் இல்லை.',
+    noSellOrders: 'விற்பனை ஆர்டர்கள் இல்லை.',
+    cancel: 'ரத்துசெய்',
+    sellTo: 'இவருக்கு விற்கவும்',
+    buyFrom: 'இவரிடமிருந்து வாங்கவும்',
+    priceAnalyzer: 'விலை பகுப்பாய்வி',
+    highestBid: 'அதிகபட்ச ஏலம்',
+    lowestAsk: 'குறைந்தபட்ச கேட்பு',
+    spread: 'பரவல்',
+    volume: '24 மணிநேர அளவு (உருவகப்படுத்தப்பட்டது)',
+    noData: 'N/A',
+    // Analytics
+    analyticsTitle: 'கிரிட் பகுப்பாய்வு',
+    analyticsChartTitle: 'வாராந்திர உற்பத்தி vs. நுகர்வு',
+    generation: 'உற்பத்தி',
+    consumption: 'நுகர்வு',
+    // Modals
+    notification: 'அறிவிப்பு',
+    ok: 'சரி',
+    fillOrder: 'ஆர்டரை நிரப்பவும்',
+    fillAmount: 'நிரப்ப வேண்டிய அளவு',
+    available: 'கிடைக்கிறது',
+    confirm: 'உறுதிப்படுத்து',
+    // Payment Modal (New)
+    paymentTitle: 'எனது வாலட் & கொடுப்பனவுகள்',
+    deposit: 'வைப்பு',
+    withdraw: 'திரும்பப் பெறுதல்',
+    bankDetails: 'வங்கி விவரங்கள்',
+    depositDesc: 'கிரெடிட்களை வாங்க நிதி டெபாசிட் செய்யவும்.',
+    depositAmount: 'டெபாசிட் செய்ய வேண்டிய தொகை (INR)',
+    depositBtn: 'டெபாசிட்டை உருவகப்படுத்தவும்',
+    withdrawDesc: 'வருவாயை உங்கள் வங்கிக்கு திரும்பப் பெறுங்கள்.',
+    withdrawAmount: 'திரும்பப் பெற வேண்டிய தொகை (INR)',
+    withdrawBtn: 'திரும்பப் பெறுதலை உருவகப்படுத்தவும்',
+    bankDesc: 'திரும்பப் பெறுவதற்கு உங்கள் வங்கிக் கணக்கை இணைக்கவும்.',
+    accountHolder: 'கணக்கு வைத்திருப்பவர் பெயர்',
+    accountNumber: 'கணக்கு எண்',
+    ifscCode: 'IFSC குறியீடு',
+    saveBankBtn: 'விவரங்களைச் சேமி',
+    // Guidelines Page (New)
+    guidelinesTitle: 'அரசு வழிகாட்டுதல்கள் & சிறந்த நடைமுறைகள்',
+    guideline1Title: '1. வழக்கமான பேனல் பராமரிப்பு',
+    guideline1Desc: 'அதிகபட்ச செயல்திறனை உறுதிப்படுத்த உங்கள் சோலார் பேனல்களை காலாண்டுக்கு ஒருமுறை சுத்தம் செய்யுங்கள்.',
+    guideline2Title: '2. கிரிட் பாதுகாப்பு தரநிலைகள்',
+    guideline2Desc: 'உங்கள் இன்வெர்ட்டர் மற்றும் கிரிட் இணைப்பு கூறுகள் சான்றளிக்கப்பட்டவை என்பதை உறுதிப்படுத்தவும்.',
+    guideline3Title: '3. நியாயமான வர்த்தகக் கொள்கை',
+    guideline3Desc: 'அனைத்து சந்தை பரிவர்த்தனைகளும் இறுதியானவை. விலை கையாளுதலில் ஈடுபட வேண்டாம்.',
+    // Analytics Page (New)
+    panelLifecycle: 'பேனல் வாழ்க்கைச் சுழற்சி',
+    avgLifespan: 'சராசரி ஆயுட்காலம்',
+    years: 'ஆண்டுகள்',
+    efficiencyDrop: 'செயல்திறன் குறைவு (ஆண்டுக்கு)',
+    projections: 'வருவாய் & நுகர்வு கணிப்புகள் (அடுத்த 30 நாட்கள்)',
+    projectedRevenue: 'கணிக்கப்பட்ட வருவாய்',
+    projectedConsumption: 'கணிக்கப்பட்ட நுகர்வு',
+    // Toast Notifications (New)
+    orderPlaced: 'ஆர்டர் செய்யப்பட்டது',
+    orderSuccess: 'ஆர்டர் வெற்றிகரமாக சந்தையில் வைக்கப்பட்டது.',
+    orderFilled: 'ஆர்டர் நிரப்பப்பட்டது',
+    buySuccess: 'வெற்றிகரமாக {amount} kWh வாங்கப்பட்டது!',
+    sellSuccess: 'வெற்றிகரமாக {amount} kWh விற்கப்பட்டது!',
+    orderCanceled: 'ஆர்டர் ரத்து செய்யப்பட்டது.',
+    // Errors
+    errNoCreditsSell: 'பிழை: விற்க போதுமான கிரெடிட்கள் இல்லை.',
+    errPostOrder: 'ஆர்டரை இடுவதில் பிழை.',
+    errCancelOrder: 'ஆர்டரை ரத்து செய்வதில் தோல்வி.',
+    errNoCreditsBuy: 'வாங்க போதுமான கிரெடிட்கள் இல்லை!',
+    errSellerNotFound: 'விற்பனையாளர் போர்ட்ஃபோலியோ காணப்படவில்லை',
+    errBuyNoCredits: 'விற்க போதுமான கிரெடிட்கள் இல்லை!',
+    errBuyerNotFound: 'வாங்குபவர் போர்ட்ஃபோலியோ காணப்படவில்லை',
+    errBuyerNoCredits: 'வாங்குபவரிடம் போதுமான கிரெடிட்கள் இல்லை.',
+    errFillOrder: 'ஆர்டரை நிரப்புவதில் பிழை',
+    errSimulate: 'நுகர்வை உருவகப்படுத்துவதில் தோல்வி.',
+    errNoCreditsConsume: 'நுகர்வுக்கு போதுமான கிரெடிட்கள் இல்லை!',
+  },
+  bn: {
+    // Nav
+    dashboard: 'ড্যাশবোর্ড',
+    liveMap: 'লাইভ ম্যাপ',
+    myPortfolio: 'আমার পোর্টফোলিও',
+    marketplace: 'বাজার',
+    analytics: 'বিশ্লেষণ',
+    guidelines: 'নির্দেশিকা', // New
+    status: 'অবস্থা',
+    online: 'সমস্ত সিস্টেম অনলাইন',
+    wallet: 'ওয়ালেট', // New
+    logout: 'লগ আউট', // New
+    // Dashboard
+    gridDashboard: 'গ্রিড ড্যাশবোর্ড',
+    totalGen: 'মোট বিদ্যুৎ উৎপাদন',
+    totalCons: 'মোট বিদ্যুৎ খরচ',
+    gridStatus: 'গ্রিড অবস্থা',
+    live: 'লাইভ',
+    blockMonitor: 'লাইভ ব্লক মনিটর',
+    block: 'ব্লক',
+    liveGen: 'লাইভ উৎপাদন',
+    avgHealth: 'গড় প্যানেল স্বাস্থ্য',
+    panelCount: 'প্যানেল সংখ্যা',
+    seeding: 'প্রাথমিক ব্লক ডেটা বীজ করা হচ্ছে...',
+    // Weather Component (New)
+    weatherTitle: 'আবহাওয়া ও সৌর রিপোর্ট',
+    location: 'শহর-ব্যাপী এলাকা',
+    solarIrradiance: 'সৌর বিকিরণ',
+    irradianceUnit: 'W/m²',
+    temperature: 'তাপমাত্রা',
+    forecast: 'উৎপাদন পূর্বাভাস',
+    conditions: 'আবহাওয়া',
+    // Simulated Weather (New)
+    sunny: 'রৌদ্রোজ্জ্বল',
+    partlyCloudy: 'আংশিক মেঘলা',
+    cloudy: 'মেঘলা',
+    high: 'উচ্চ',
+    moderate: 'মাঝারি',
+    low: 'কম',
+    // Map
+    cityLiveMap: 'শহরের লাইভ ম্যাপ',
+    mapSubtitle: 'বিস্তারিত পরিসংখ্যান দেখতে যেকোনো ব্লকে ক্লিক করুন।',
+    detailedBlockView: 'বিস্তারিত ভিউ',
+    backToCity: 'শহরের ম্যাপে ফিরে যান',
+    houses: 'বাড়ি',
+    grids: 'গ্রিড',
+    // Portfolio
+    portfolio: 'আমার পোর্টফোলিও',
+    userId: 'ব্যবহারকারী আইডি (ট্রেড করতে শেয়ার করুন)',
+    panelHealth: 'প্যানেল স্বাস্থ্য',
+    availableCredits: 'উপলব্ধ ক্রেডিট',
+    netEnergy: 'নেট শক্তি',
+    energyFlow: 'লাইভ শক্তি প্রবাহ',
+    totalGeneration: 'মোট উৎপাদন',
+    totalConsumption: 'মোট খরচ',
+    surplusDeficit: 'উদ্বৃত্ত / ঘাটতি',
+    actions: 'ক্রিয়াকলাপ',
+    simulateConsumption: 'গ্রিড থেকে শক্তি খরচ সিমুলেট করুন।',
+    simulate: '10 kWh খরচ সিমুলেট করুন',
+    loadingPortfolio: 'আপনার পোর্টফোলিও লোড হচ্ছে...',
+    // Marketplace
+    market: 'শক্তি বাজার',
+    yourCredits: 'আপনার উপলব্ধ ক্রেডিট',
+    sellTitle: 'শক্তি ক্রেডিট বিক্রি করুন',
+    buyTitle: 'শক্তি ক্রেডিট কিনুন',
+    amount: 'পরিমাণ (kWh)',
+    price: 'মূল্য (ক্রেডিট/kWh)',
+    postSell: 'বিক্রয় অর্ডার পোস্ট করুন',
+    postBuy: 'কেনার অর্ডার পোস্ট করুন',
+    buyOrders: 'কেনার অর্ডার (বিড)',
+    sellOrders: 'বিক্রয় অর্ডার (আস্ক)',
+    action: 'ক্রিয়াকলাপ',
+    noBuyOrders: 'কোনো কেনার অর্ডার নেই।',
+    noSellOrders: 'কোনো বিক্রয় অর্ডার নেই।',
+    cancel: 'বাতিল করুন',
+    sellTo: 'এনাকে বিক্রি করুন',
+    buyFrom: 'এনার থেকে কিনুন',
+    priceAnalyzer: 'মূল্য বিশ্লেষক',
+    highestBid: 'সর্বোচ্চ বিড',
+    lowestAsk: 'সর্বনিম্ন আস্ক',
+    spread: 'স্প্রেড',
+    volume: '24ঘ ভলিউম (সিমুলেটেড)',
+    noData: 'N/A',
+    // Analytics
+    analyticsTitle: 'গ্রিড বিশ্লেষণ',
+    analyticsChartTitle: 'সাপ্তাহিক উৎপাদন বনাম খরচ',
+    generation: 'উৎপাদন',
+    consumption: 'খরচ',
+    // Modals
+    notification: 'বিজ্ঞপ্তি',
+    ok: 'ঠিক আছে',
+    fillOrder: 'অর্ডার পূরণ করুন',
+    fillAmount: 'পূরণ করার পরিমাণ',
+    available: 'উপলব্ধ',
+    confirm: 'নিশ্চিত করুন',
+    // Payment Modal (New)
+    paymentTitle: 'আমার ওয়ালেট এবং পেমেন্ট',
+    deposit: 'জমা',
+    withdraw: 'উত্তোলন',
+    bankDetails: 'ব্যাঙ্ক বিবরণী',
+    depositDesc: 'ক্রেডিট কিনতে ফান্ড জমা দিন।',
+    depositAmount: 'জমা করার পরিমাণ (INR)',
+    depositBtn: 'জমা সিমুলেট করুন',
+    withdrawDesc: 'আপনার ব্যাঙ্কে উপার্জন উত্তোলন করুন।',
+    withdrawAmount: 'উত্তোলন করার পরিমাণ (INR)',
+    withdrawBtn: 'উত্তোলন সিমুলেট করুন',
+    bankDesc: 'উত্তোলনের জন্য আপনার ব্যাঙ্ক অ্যাকাউন্ট লিঙ্ক করুন।',
+    accountHolder: 'অ্যাকাউন্টধারীর নাম',
+    accountNumber: 'অ্যাকাউন্ট নম্বর',
+    ifscCode: 'IFSC কোড',
+    saveBankBtn: 'বিবরণী সংরক্ষণ করুন',
+    // Guidelines Page (New)
+    guidelinesTitle: 'সরকারি নির্দেশিকা এবং সেরা অনুশীলন',
+    guideline1Title: '1. নিয়মিত প্যানেল রক্ষণাবেক্ষণ',
+    guideline1Desc: 'সর্বাধিক দক্ষতা নিশ্চিত করতে আপনার সোলার প্যানেলগুলি ত্রৈমাসিকভাবে পরিষ্কার করুন।',
+    guideline2Title: '2. গ্রিড নিরাপত্তা মান',
+    guideline2Desc: 'নিশ্চিত করুন যে আপনার বৈদ্যুতিন সংকেতের মেরু বদল এবং গ্রিড সংযোগ উপাদানগুলি প্রত্যয়িত।',
+    guideline3Title: '3. ন্যায্য বাণিজ্য নীতি',
+    guideline3Desc: 'সমস্ত বাজার লেনদেন চূড়ান্ত। মূল্য কারসাজিতে লিপ্ত হবেন না।',
+    // Analytics Page (New)
+    panelLifecycle: 'প্যানেল জীবনচক্র',
+    avgLifespan: 'গড় আয়ু',
+    years: 'বছর',
+    efficiencyDrop: 'দক্ষতা হ্রাস (প্রতি বছর)',
+    projections: 'রাজস্ব এবং খরচ প্রক্ষেপণ (পরবর্তী 30 দিন)',
+    projectedRevenue: 'প্রত্যাশিত রাজস্ব',
+    projectedConsumption: 'প্রত্যাশিত খরচ',
+    // Toast Notifications (New)
+    orderPlaced: 'অর্ডার দেওয়া হয়েছে',
+    orderSuccess: 'অর্ডার সফলভাবে বাজারে রাখা হয়েছে।',
+    orderFilled: 'অর্ডার পূরণ করা হয়েছে',
+    buySuccess: 'সফলভাবে {amount} kWh কেনা হয়েছে!',
+    sellSuccess: 'সফলভাবে {amount} kWh বিক্রি হয়েছে!',
+    orderCanceled: 'অর্ডার বাতিল করা হয়েছে।',
+    // Errors
+    errNoCreditsSell: 'ত্রুটি: বিক্রয় অর্ডার দেওয়ার জন্য পর্যাপ্ত ক্রেডিট নেই।',
+    errPostOrder: 'অর্ডার পোস্ট করতে ত্রুটি।',
+    errCancelOrder: 'অর্ডার বাতিল করতে ব্যর্থ।',
+    errNoCreditsBuy: 'কেনার জন্য পর্যাপ্ত ক্রেডিট নেই!',
+    errSellerNotFound: 'বিক্রেতার পোর্টফোলিও পাওয়া যায়নি',
+    errBuyNoCredits: 'আপনার কাছে বিক্রি করার জন্য পর্যাপ্ত ক্রেডিট নেই!',
+    errBuyerNotFound: 'ক্রেতার পোর্টফোলিও পাওয়া যায়নি',
+    errBuyerNoCredits: 'ক্রেতার কাছে এই লেনদেনের জন্য পর্যাপ্ত ক্রেডিট নেই।',
+    errFillOrder: 'অর্ডার পূরণে ত্রুটি',
+    errSimulate: 'খরচ সিমুলেট করতে ব্যর্থ।',
+    errNoCreditsConsume: 'খরচের জন্য পর্যাপ্ত ক্রেডিট নেই!',
+  }
+};
+// --- End I18N ---
+
+
+// --- CONSTANTS ---
+const CITY_BLOCKS = [
+  { id: 'A1', name: 'Sector 1-A', x: 0, y: 0 },
+  { id: 'A2', name: 'Sector 1-B', x: 1, y: 0 },
+  { id: 'A3', name: 'Sector 1-C', x: 2, y: 0 },
+  { id: 'B1', name: 'Sector 2-A', x: 0, y: 1 },
+  { id: 'B2', name: 'Sector 2-B', x: 1, y: 1 },
+  { id: 'B3', name: 'Sector 2-C', x: 2, y: 1 },
+  { id: 'C1', name: 'Sector 3-A', x: 0, y: 2 },
+  { id: 'C2', name: 'Sector 3-B', x: 1, y: 2 },
+  { id: 'C3', name: 'Sector 3-C', x: 2, y: 2 },
+];
+const PAGES = ['Dashboard', 'Live Map', 'My Portfolio', 'Marketplace', 'Analytics', 'Guidelines']; // Added Guidelines
+
+// --- Utility Functions ---
+const formatNumber = (num) => new Intl.NumberFormat().format(num);
+const getHealthColor = (health) => {
+  if (health > 90) return 'text-green-500 dark:text-green-400';
+  if (health > 60) return 'text-yellow-500 dark:text-yellow-400';
+  return 'text-red-500 dark:text-red-400';
+};
+const getFlowColor = (gen) => {
+  if (gen > 200) return 'border-green-500 dark:border-green-400 animate-pulse-strong';
+  if (gen > 100) return 'border-yellow-500 dark:border-yellow-400 animate-pulse';
+  return 'border-gray-400 dark:border-gray-600';
+}
+
+// --- New Weather Component ---
+const WeatherReport = ({ t }) => {
+  const [weatherData, setWeatherData] = useState({
+    conditions: 'sunny',
+    irradiance: 850,
+    temp: 28,
+  });
+
+  useEffect(() => {
+    // Simulate live weather updates
+    const weatherSim = setInterval(() => {
+      const conditions = ['sunny', 'partlyCloudy', 'cloudy'];
+      const newCondition = conditions[Math.floor(Math.random() * conditions.length)];
+      let newIrradiance;
+      if (newCondition === 'sunny') newIrradiance = 700 + Math.random() * 300; // 700-1000
+      else if (newCondition === 'partlyCloudy') newIrradiance = 400 + Math.random() * 300; // 400-700
+      else newIrradiance = 100 + Math.random() * 300; // 100-400
+      
+      setWeatherData({
+        conditions: newCondition,
+        irradiance: Math.round(newIrradiance),
+        temp: 25 + Math.random() * 5, // 25-30°C
+      });
+    }, 10000); // Update every 10 seconds
+
+    return () => clearInterval(weatherSim);
+  }, []);
+
+  const forecast = useMemo(() => {
+    if (weatherData.irradiance > 700) return 'high';
+    if (weatherData.irradiance > 400) return 'moderate';
+    return 'low';
+  }, [weatherData.irradiance]);
+
+  const weatherIcon = useMemo(() => {
+    if (weatherData.conditions === 'sunny') return <Sun size={32} className="text-yellow-400" />;
+    if (weatherData.conditions === 'partlyCloudy') return <CloudSun size={32} className="text-blue-300" />;
+    return <CloudSun size={32} className="text-gray-400" />;
+  }, [weatherData.conditions]);
+
+  const forecastColor = {
+    high: 'text-green-500 dark:text-green-400',
+    moderate: 'text-yellow-500 dark:text-yellow-400',
+    low: 'text-red-500 dark:text-red-400',
+  }[forecast];
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 mb-8">
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">{t('weatherTitle')}</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-center">
+        {/* Condition */}
+        <div className="flex items-center space-x-3">
+          {weatherIcon}
+          <div>
+            <h4 className="text-sm text-gray-500 dark:text-gray-400">{t('conditions')}</h4>
+            <p className="text-lg font-bold text-gray-900 dark:text-white">{t(weatherData.conditions)}</p>
+          </div>
+        </div>
+        {/* Solar Irradiance */}
+        <div className="flex items-center space-x-3">
+          <Zap size={32} className="text-blue-500" />
+          <div>
+            <h4 className="text-sm text-gray-500 dark:text-gray-400">{t('solarIrradiance')}</h4>
+            <p className="text-lg font-bold text-gray-900 dark:text-white">{weatherData.irradiance} <span className="text-sm font-normal">{t('irradianceUnit')}</span></p>
+          </div>
+        </div>
+        {/* Temperature */}
+        <div className="flex items-center space-x-3">
+          <Thermometer size={32} className="text-red-500" />
+          <div>
+            <h4 className="text-sm text-gray-500 dark:text-gray-400">{t('temperature')}</h4>
+            <p className="text-lg font-bold text-gray-900 dark:text-white">{weatherData.temp.toFixed(1)} °C</p>
+          </div>
+        </div>
+        {/* Forecast */}
+        <div className="flex items-center space-x-3">
+          <TrendingUp size={32} className={forecastColor} />
+          <div>
+            <h4 className="text-sm text-gray-500 dark:text-gray-400">{t('forecast')}</h4>
+            <p className={`text-lg font-bold ${forecastColor}`}>{t(forecast)}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// --- Page Components ---
+
+/**
+ * 1. DASHBOARD PAGE
+ * Shows a high-level overview of the entire grid.
+ */
+const DashboardPage = ({ cityBlocks, gridStats, t }) => {
+  return (
+    <div className="p-4 md:p-8 animate-fade-in">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">{t('gridDashboard')}</h1>
+      
+      {/* Grid Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <StatCard title={t('totalGen')} value={`${formatNumber(gridStats.totalGeneration)} kWh`} unit={t('live')} />
+        <StatCard title={t('totalCons')} value={`${formatNumber(gridStats.totalConsumption)} kWh`} unit={t('live')} />
+        <StatCard title={t('gridStatus')} value={gridStats.status} unit="" isStatus={true} />
+      </div>
+
+      {/* NEW: Weather Report */}
+      <WeatherReport t={t} />
+
+      {/* Live City Block Monitor */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('blockMonitor')}</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{t('block')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{t('liveGen')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{t('avgHealth')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{t('panelCount')}</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {cityBlocks.length === 0 && (
+                <tr>
+                  <td colSpan="4" className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">{t('seeding')}</td>
+                </tr>
+              )}
+              {cityBlocks.map((block) => (
+                <tr key={block.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{block.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 dark:text-green-400 font-bold">{formatNumber(block.totalGeneration)} kWh</td>
+                  <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${getHealthColor(block.avgHealth)}`}>{block.avgHealth.toFixed(1)}%</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">{block.panelCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Detailed Block View (New Component) ---
+const DetailedBlockView = ({ block, onBack, t }) => {
+  const [tooltip, setTooltip] = useState(null); // State for hover tooltip
+
+  // Memoize simulated locations so they don't change on re-render
+  const locations = useMemo(() => {
+    const houses = [];
+    const grids = [];
+    // Use block panelCount as a seed for stable random generation
+    const numHouses = block.panelCount;
+    const numGrids = Math.floor(block.panelCount / 20) + 1;
+
+    for (let i = 0; i < numHouses; i++) {
+      houses.push({
+        x: Math.random() * 90 + 5, // %
+        y: Math.random() * 90 + 5, // %
+        name: `House ${i + 1}`,
+        production: (Math.random() * 5 + 2).toFixed(1), // 2.0 to 7.0 kWh
+      });
+    }
+    for (let i = 0; i < numGrids; i++) {
+      grids.push({
+        x: Math.random() * 80 + 10, // %
+        y: Math.random() * 80 + 10, // %
+        id: `Grid ${i + 1}`,
+        load: (Math.random() * 100 + 50).toFixed(0), // 50 to 150 kW
+      });
+    }
+    return { houses, grids };
+  }, [block.panelCount]);
+
+  return (
+    <div className="p-4 md:p-8 animate-fade-in relative">
+      {/* Tooltip */}
+      {tooltip && (
+        <div
+          className="fixed z-10 p-2 bg-gray-900 bg-opacity-80 text-white text-xs rounded-lg shadow-lg pointer-events-none"
+          style={{ top: tooltip.y + 15, left: tooltip.x + 15 }}
+        >
+          {tooltip.lines.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
+      )}
+
+      <button onClick={onBack} className="flex items-center space-x-2 text-blue-500 dark:text-blue-400 hover:underline mb-4">
+        <ArrowLeft size={18} />
+        <span>{t('backToCity')}</span>
+      </button>
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{t('detailedBlockView')}: {block.name}</h1>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+        <div className="aspect-video w-full bg-gray-100 dark:bg-gray-900 p-2 rounded-lg border-2 border-gray-300 dark:border-gray-700 overflow-hidden">
+          <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+            {/* Background grid */}
+            <defs>
+              <pattern id="smallGrid" width="2" height="2" patternUnits="userSpaceOnUse">
+                <path d="M 2 0 L 0 0 0 2" fill="none" stroke="rgba(156, 163, 175, 0.2)" strokeWidth="0.1"/>
+              </pattern>
+              <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                <rect width="10" height="10" fill="url(#smallGrid)"/>
+                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(156, 163, 175, 0.3)" strokeWidth="0.2"/>
+              </pattern>
+            </defs>
+            <rect width="100" height="100" fill="url(#grid)" />
+
+            {/* Houses (Green Dots) */}
+            {locations.houses.map((h, i) => (
+              <circle
+                key={`h-${i}`}
+                cx={h.x} cy={h.y} r="0.5"
+                fill="rgb(34, 197, 94)"
+                onMouseEnter={(e) => setTooltip({
+                  x: e.clientX, y: e.clientY,
+                  lines: [`${h.name}`, `Prod: ${h.production} kWh`]
+                })}
+                onMouseLeave={() => setTooltip(null)}
+                className="cursor-pointer"
+              />
+            ))}
+            
+            {/* Grids (Yellow Glowing Dots) */}
+            {locations.grids.map((g, i) => (
+              <g
+                key={`g-${i}`}
+                onMouseEnter={(e) => setTooltip({
+                  x: e.clientX, y: e.clientY,
+                  lines: [`${g.id}`, `Load: ${g.load} kW`]
+                })}
+                onMouseLeave={() => setTooltip(null)}
+                className="cursor-pointer"
+              >
+                <circle cx={g.x} cy={g.y} r="1" fill="rgb(250, 204, 21)">
+                  <animate
+                    attributeName="r"
+                    values="1;1.5;1"
+                    dur="1.5s"
+                    repeatCount="indefinite"
+                  />
+                  <animate
+                    attributeName="opacity"
+                    values="1;0.5;1"
+                    dur="1.5s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+                <circle cx={g.x} cy={g.y} r="0.75" fill="white" />
+              </g>
+            ))}
+          </svg>
+        </div>
+        <div className="flex justify-center space-x-6 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+            <span className="text-sm text-gray-700 dark:text-gray-300">{t('houses')} ({locations.houses.length})</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-yellow-400 rounded-full mr-2"></div>
+            <span className="text-sm text-gray-700 dark:text-gray-300">{t('grids')} ({locations.grids.length})</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+/**
+ * 2. LIVE MAP PAGE
+ * Shows a visual representation of the city blocks and their status.
+ */
+const LiveMapPage = ({ cityBlocks, onBlockClick, t }) => {
+  const [detailedBlockId, setDetailedBlockId] = useState(null);
+
+  const mapGrid = useMemo(() => {
+    // Create a 3x3 grid for this example
+    const grid = Array(3).fill(null).map(() => Array(3).fill(null));
+    cityBlocks.forEach(block => {
+      if (grid[block.y] && grid[block.y][block.x] === null) {
+        grid[block.y][block.x] = block;
+      }
+    });
+    return grid;
+  }, [cityBlocks]);
+
+  if (detailedBlockId) {
+    const block = cityBlocks.find(b => b.id === detailedBlockId);
+    if (block) {
+      return <DetailedBlockView block={block} onBack={() => setDetailedBlockId(null)} t={t} />;
+    }
+    // Fallback if block not found
+    setDetailedBlockId(null);
+  }
+
+  return (
+    <div className="p-4 md:p-8 animate-fade-in">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">{t('cityLiveMap')}</h1>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+        <p className="text-gray-600 dark:text-gray-300 mb-4">{t('mapSubtitle')}</p>
+        <div className="aspect-square w-full max-w-2xl mx-auto bg-gray-100 dark:bg-gray-900 p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700">
+          <div className="grid grid-cols-3 gap-4 h-full">
+            {mapGrid.flat().map((block, index) => (
+              block ? (
+                <div
+                  key={block.id}
+                  onClick={() => setDetailedBlockId(block.id)}
+                  className={`flex flex-col items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-lg shadow-lg cursor-pointer transition-all duration-300 hover:bg-gray-300 dark:hover:bg-gray-600 hover:shadow-2xl border-4 ${getFlowColor(block.totalGeneration)}`}
+                >
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">{block.name}</span>
+                  <span className="text-xs text-gray-600 dark:text-gray-300">{block.totalGeneration} kWh</span>
+                </div>
+              ) : (
+                <div key={index} className="bg-gray-100 dark:bg-gray-800 rounded-lg"></div> // Empty lot
+              )
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * 3. MY PORTFOLIO PAGE
+ * Shows the logged-in user's personal stats and panel health.
+ */
+const MyPortfolioPage = ({ userId, portfolio, onSimulateConsumption, t }) => {
+  if (!portfolio) {
+    return <LoadingSpinner text={t('loadingPortfolio')} />;
+  }
+  
+  const { generation, consumption, credits, panelHealth } = portfolio;
+  const netEnergy = generation - consumption;
+
+  return (
+    <div className="p-4 md:p-8 animate-fade-in">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">{t('portfolio')}</h1>
+      
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">{t('userId')}</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-900 p-3 rounded-lg font-mono break-all">{userId}</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <StatCard title={t('panelHealth')} value={`${panelHealth.toFixed(1)}%`} unit="" className={getHealthColor(panelHealth)} />
+        <StatCard title={t('availableCredits')} value={formatNumber(credits)} unit="kWh" className="text-cyan-600 dark:text-cyan-400" />
+        <StatCard 
+          title={t('netEnergy')} 
+          value={formatNumber(netEnergy)} 
+          unit="kWh" 
+          className={netEnergy >= 0 ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500'} 
+        />
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">{t('energyFlow')}</h2>
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600 dark:text-gray-300">{t('totalGeneration')}:</span>
+            <span className="text-lg font-bold text-green-500 dark:text-green-400">{formatNumber(generation)} kWh</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600 dark:text-gray-300">{t('totalConsumption')}:</span>
+            <span className="text-lg font-bold text-red-500 dark:text-red-400">{formatNumber(consumption)} kWh</span>
+          </div>
+          <hr className="border-gray-200 dark:border-gray-700 my-2" />
+          <div className="flex justify-between items-center">
+            <span className="text-gray-900 dark:text-white font-bold">{t('surplusDeficit')}:</span>
+            <span className={`text-lg font-bold ${netEnergy >= 0 ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500'}`}>{formatNumber(netEnergy)} kWh</span>
+          </div>
+        </div>
+      </div>
+      
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">{t('actions')}</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">{t('simulateConsumption')}</p>
+        <button
+          onClick={onSimulateConsumption}
+          className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-200"
+        >
+          {t('simulate')}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * 4. MARKETPLACE PAGE
+ * The "Stock Exchange" for energy credits.
+ */
+const MarketplacePage = ({ userId, userCredits, marketOrders, onPostOrder, onInitiateFill, t }) => {
+  const [sellAmount, setSellAmount] = useState('');
+  const [sellPrice, setSellPrice] = useState('1.0');
+  const [buyAmount, setBuyAmount] = useState('');
+  const [buyPrice, setBuyPrice] = useState('1.0');
+
+  const buyOrders = marketOrders.filter(o => o.type === 'buy').sort((a, b) => b.price - a.price); // Highest buy price first
+  const sellOrders = marketOrders.filter(o => o.type === 'sell').sort((a, b) => a.price - b.price); // Lowest sell price first
+
+  const handlePostSell = (e) => {
+    e.preventDefault();
+    const amountNum = parseInt(sellAmount);
+    const priceNum = parseFloat(sellPrice);
+    if (amountNum > 0 && priceNum > 0) {
+      if (amountNum > userCredits) {
+        // We'll use a custom modal soon, for now, console.error
+        console.error("Not enough credits to sell!");
+        return;
+      }
+      onPostOrder('sell', amountNum, priceNum, t('errNoCreditsSell'));
+      setSellAmount('');
+    }
+  };
+
+  const handlePostBuy = (e) => {
+    e.preventDefault();
+    const amountNum = parseInt(buyAmount);
+    const priceNum = parseFloat(buyPrice);
+    if (amountNum > 0 && priceNum > 0) {
+      onPostOrder('buy', amountNum, priceNum, t('errNoCreditsSell'));
+      setBuyAmount('');
+    }
+  };
+
+  return (
+    <div className="p-4 md:p-8 animate-fade-in">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">{t('market')}</h1>
+      <p className="text-lg text-cyan-600 dark:text-cyan-400 mb-6 font-medium">{t('yourCredits')}: {formatNumber(userCredits)} kWh</p>
+
+      {/* Forms for Buy/Sell */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* Sell Form */}
+        <form onSubmit={handlePostSell} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+          <h2 className="text-2xl font-semibold text-green-600 dark:text-green-400 mb-4">{t('sellTitle')}</h2>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="sell-amount">{t('amount')}</label>
+            <input
+              type="number"
+              id="sell-amount"
+              value={sellAmount}
+              onChange={(e) => setSellAmount(e.target.value)}
+              placeholder="e.g., 100"
+              className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              min="1"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="sell-price">{t('price')}</label>
+            <input
+              type="number"
+              id="sell-price"
+              value={sellPrice}
+              onChange={(e) => setSellPrice(e.target.value)}
+              placeholder="e.g., 1.2"
+              className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              min="0.1"
+              step="0.1"
+            />
+          </div>
+          <button type="submit" className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-colors duration-200">
+            {t('postSell')}
+          </button>
+        </form>
+
+        {/* Buy Form */}
+        <form onSubmit={handlePostBuy} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+          <h2 className="text-2xl font-semibold text-red-600 dark:text-red-400 mb-4">{t('buyTitle')}</h2>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="buy-amount">{t('amount')}</label>
+            <input
+              type="number"
+              id="buy-amount"
+              value={buyAmount}
+              onChange={(e) => setBuyAmount(e.target.value)}
+              placeholder="e.g., 50"
+              className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-red-500 focus:outline-none"
+              min="1"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="buy-price">{t('price')}</label>
+            <input
+              type="number"
+              id="buy-price"
+              value={buyPrice}
+              onChange={(e) => setBuyPrice(e.target.value)}
+              placeholder="e.g., 0.8"
+              className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-red-500 focus:outline-none"
+              min="0.1"
+              step="0.1"
+            />
+          </div>
+          <button type="submit" className="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition-colors duration-200">
+            {t('postBuy')}
+          </button>
+        </form>
+      </div>
+
+      {/* Price Analyzer */}
+      <PriceAnalyzer marketOrders={marketOrders} t={t} />
+
+      {/* New Price History Chart */}
+      <PriceHistoryChart t={t} />
+
+      {/* Order Books */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+        <OrderBook title={t('buyOrders')} orders={buyOrders} type="buy" onFill={onInitiateFill} userId={userId} t={t} />
+        <OrderBook title={t('sellOrders')} orders={sellOrders} type="sell" onFill={onInitiateFill} userId={userId} t={t} />
+      </div>
+    </div>
+  );
+};
+
+/**
+ * 5. ANALYTICS PAGE
+ * Shows simulated charts for historical data.
+ */
+const AnalyticsPage = ({ t }) => {
+  const historicalData = [
+    { day: 'Mon', gen: 12000, cons: 11000 },
+    { day: 'Tue', gen: 13500, cons: 12000 },
+    { day: 'Wed', gen: 14000, cons: 13500 },
+    { day: 'Thu', gen: 13000, cons: 14000 },
+    { day: 'Fri', gen: 15000, cons: 14500 },
+    { day: 'Sat', gen: 16000, cons: 15000 },
+    { day: 'Sun', gen: 15500, cons: 14000 },
+  ];
+  const maxVal = 20000; // Max Y-axis for scaling
+  
+  // Simulated data for new components
+  const panelLifecycleData = {
+    avgLifespan: 25,
+    efficiencyDrop: 0.5,
+  };
+  
+  const projectionsData = {
+    revenue: 1250, // Simulated INR
+    consumption: 350, // Simulated kWh
+  };
+
+  return (
+    <div className="p-4 md:p-8 animate-fade-in">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">{t('analyticsTitle')}</h1>
+      
+      {/* New Analytics Sections */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Panel Lifecycle */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">{t('panelLifecycle')}</h2>
+          <div className="flex justify-around items-center h-full">
+            <div className="text-center">
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('avgLifespan')}</p>
+              <p className="text-4xl font-bold text-blue-500 dark:text-blue-400">{panelLifecycleData.avgLifespan}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('years')}</p>
+            </div>
+            <div className="border-l border-gray-200 dark:border-gray-700 h-24"></div>
+            <div className="text-center">
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('efficiencyDrop')}</p>
+              <p className="text-4xl font-bold text-yellow-500 dark:text-yellow-400">{panelLifecycleData.efficiencyDrop}%</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">/ {t('years')}</p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Projections */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">{t('projections')}</h2>
+          <div className="flex justify-around items-center h-full">
+            <div className="text-center">
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('projectedRevenue')}</p>
+              <p className="text-4xl font-bold text-green-500 dark:text-green-400">₹{formatNumber(projectionsData.revenue)}</p>
+            </div>
+            <div className="border-l border-gray-200 dark:border-gray-700 h-24"></div>
+            <div className="text-center">
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('projectedConsumption')}</p>
+              <p className="text-4xl font-bold text-red-500 dark:text-red-400">{formatNumber(projectionsData.consumption)}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">kWh</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Existing Weekly Chart */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">{t('analyticsChartTitle')}</h2>
+        <div className="w-full h-80 flex justify-between items-end space-x-2 md:space-x-4 px-2">
+          {historicalData.map(data => (
+            <div key={data.day} className="flex-1 flex flex-col items-center h-full justify-end">
+              <div className="flex items-end h-full w-full justify-center gap-1">
+                {/* Generation Bar */}
+                <div 
+                  className="w-1/2 bg-green-500 rounded-t-lg transition-all duration-500"
+                  style={{ height: `${(data.gen / maxVal) * 100}%` }}
+                  title={`Gen: ${formatNumber(data.gen)} kWh`}
+                ></div>
+                {/* Consumption Bar */}
+                <div 
+                  className="w-1/2 bg-red-500 rounded-t-lg transition-all duration-500"
+                  style={{ height: `${(data.cons / maxVal) * 100}%` }}
+                  title={`Cons: ${formatNumber(data.cons)} kWh`}
+                ></div>
+              </div>
+              <span className="text-xs text-gray-500 dark:text-gray-300 mt-2">{data.day}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-center space-x-6 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center">
+            <div className="w-4 h-4 bg-green-500 rounded-sm mr-2"></div>
+            <span className="text-sm text-gray-700 dark:text-gray-300">{t('generation')}</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-4 bg-red-500 rounded-sm mr-2"></div>
+            <span className="text-sm text-gray-700 dark:text-gray-300">{t('consumption')}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * 6. GUIDELINES PAGE (New)
+ * Shows static content for government guidelines.
+ */
+const GuidelinesPage = ({ t }) => {
+  const guidelines = [
+    { title: t('guideline1Title'), desc: t('guideline1Desc') },
+    { title: t('guideline2Title'), desc: t('guideline2Desc') },
+    { title: t('guideline3Title'), desc: t('guideline3Desc') },
+  ];
+
+  return (
+    <div className="p-4 md:p-8 animate-fade-in">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">{t('guidelinesTitle')}</h1>
+      <div className="space-y-6">
+        {guidelines.map((item, index) => (
+          <div key={index} className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">{item.title}</h2>
+            <p className="text-gray-600 dark:text-gray-300">{item.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+// --- Helper & Sub-Components ---
+
+const StatCard = ({ title, value, unit, className = 'text-gray-900 dark:text-white', isStatus = false }) => (
+  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-4">
+    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</h3>
+    <div className="flex items-baseline space-x-2">
+      <span className={`text-3xl font-bold ${className}`}>
+        {isStatus ? (
+          <span className={value === 'Offline' ? 'text-red-500' : 'text-green-500 dark:text-green-400'}>{value}</span>
+        ) : value}
+      </span>
+      {unit && <span className="text-sm text-gray-500 dark:text-gray-400">{unit}</span>}
+    </div>
+  </div>
+);
+
+const PriceAnalyzer = ({ marketOrders, t }) => {
+  const { highestBid, lowestAsk, spread, volume } = useMemo(() => {
+    const buyOrders = marketOrders.filter(o => o.type === 'buy');
+    const sellOrders = marketOrders.filter(o => o.type === 'sell');
+
+    const highestBid = buyOrders.length > 0 ? Math.max(...buyOrders.map(o => o.price)) : null;
+    const lowestAsk = sellOrders.length > 0 ? Math.min(...sellOrders.map(o => o.price)) : null;
+    
+    let spread = null;
+    if (highestBid && lowestAsk) {
+      spread = lowestAsk - highestBid;
+    }
+    
+    // In a real app, this would query a 'transactions' collection.
+    // We'll simulate it based on number of orders.
+    const volume = marketOrders.reduce((acc, o) => acc + o.amount, 0) * (Math.random() * 0.5 + 0.5);
+
+    return { highestBid, lowestAsk, spread, volume: Math.round(volume) };
+  }, [marketOrders]);
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 mb-8">
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+        <TrendingUp size={24} className="mr-2 text-blue-500" />
+        {t('priceAnalyzer')}
+      </h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+          <h4 className="text-sm text-gray-500 dark:text-gray-400">{t('highestBid')}</h4>
+          <p className="text-xl font-bold text-green-600 dark:text-green-400">{highestBid ? highestBid.toFixed(2) : t('noData')}</p>
+        </div>
+        <div>
+          <h4 className="text-sm text-gray-500 dark:text-gray-400">{t('lowestAsk')}</h4>
+          <p className="text-xl font-bold text-red-600 dark:text-red-400">{lowestAsk ? lowestAsk.toFixed(2) : t('noData')}</p>
+        </div>
+        <div>
+          <h4 className="text-sm text-gray-500 dark:text-gray-400">{t('spread')}</h4>
+          <p className={`text-xl font-bold ${spread && spread > 0 ? 'text-gray-700 dark:text-gray-200' : 'text-yellow-500'}`}>
+            {spread ? spread.toFixed(2) : t('noData')}
+          </p>
+        </div>
+        <div>
+          <h4 className="text-sm text-gray-500 dark:text-gray-400">{t('volume')}</h4>
+          <p className="text-xl font-bold text-gray-700 dark:text-gray-200">{formatNumber(volume)}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- New Price History Chart ---
+const PriceHistoryChart = ({ t }) => {
+  const simulatedPrices = useMemo(() => {
+    let price = 1.1;
+    const prices = [];
+    for (let i = 0; i < 7; i++) {
+      prices.push({
+        day: i,
+        price: price.toFixed(2)
+      });
+      price += (Math.random() - 0.45) * 0.2; // Fluctuate price
+      if (price < 0.5) price = 0.5;
+      if (price > 2.0) price = 2.0;
+    }
+    return prices;
+  }, []);
+  
+  const maxPrice = 2.0;
+  const minPrice = 0.5;
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 mb-8">
+      <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">7-Day Avg. Price (Simulated)</h2>
+      <div className="w-full h-48 flex justify-between items-end space-x-2 px-2">
+        {simulatedPrices.map(data => (
+          <div key={data.day} className="flex-1 flex flex-col items-center h-full justify-end">
+            <div className="flex items-end h-full w-full justify-center">
+              <div 
+                className="w-1/2 bg-blue-500 rounded-t-md transition-all duration-500"
+                style={{ height: `${((data.price - minPrice) / (maxPrice - minPrice)) * 100}%` }}
+                title={`Price: ${data.price}`}
+              ></div>
+            </div>
+            <span className="text-xs text-gray-500 dark:text-gray-300 mt-2">-{6 - data.day}d</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const OrderBook = ({ title, orders, type, onFill, userId, t }) => {
+  const isBuy = type === 'buy';
+  const color = isBuy ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+  const buttonColor = isBuy ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700';
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden h-96 flex flex-col">
+      <h3 className={`text-xl font-semibold p-4 ${color}`}>{title}</h3>
+      <div className="overflow-y-auto flex-grow">
+        <table className="min-w-full">
+          <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('amount')}</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('price')}</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('action')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            {orders.length === 0 && (
+              <tr><td colSpan="3" className="px-4 py-3 text-center text-gray-500 dark:text-gray-500">{isBuy ? t('noBuyOrders') : t('noSellOrders')}</td></tr>
+            )}
+            {orders.map(order => (
+              <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{formatNumber(order.amount)}</td>
+                <td className={`px-4 py-3 text-sm font-medium ${color}`}>{order.price.toFixed(2)}</td>
+                <td className="px-4 py-3 text-sm">
+                  {order.sellerId === userId ? (
+                     <button 
+                       onClick={() => onFill(order)} // Will be a "cancel" action
+                       className="text-xs bg-gray-500 text-white px-2 py-1 rounded hover:bg-gray-600 dark:bg-gray-600 dark:hover:bg-gray-500"
+                     >
+                       {t('cancel')}
+                     </button>
+                  ) : (
+                     <button
+                       onClick={() => onFill(order)}
+                       className={`text-xs text-white font-bold px-2 py-1 rounded ${buttonColor} transition-colors`}
+                     >
+                       {isBuy ? t('sellTo') : t('buyFrom')}
+                     </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const LoadingSpinner = ({ text = "Loading..." }) => (
+  <div className="flex flex-col items-center justify-center h-full min-h-64 text-gray-900 dark:text-white">
+    <svg className="animate-spin -ml-1 mr-3 h-10 w-10 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+    <span className="mt-4 text-lg font-medium">{text}</span>
+  </div>
+);
+
+const Modal = ({ title, children, onClose }) => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md m-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{title}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
+             <X size={20} />
+          </button>
+        </div>
+        <div className="p-6 text-gray-700 dark:text-gray-300">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- New Modal for Partial Fill ---
+const PartialFillModal = ({ order, userCredits, onClose, onConfirmFill, t }) => {
+  const [fillAmount, setFillAmount] = useState(order.amount);
+  const isBuy = order.type === 'buy';
+  const cost = fillAmount * order.price;
+  
+  const maxFillable = isBuy ? Math.min(order.amount, Math.floor(userCredits / order.price)) : order.amount;
+
+  useEffect(() => {
+    // Set initial amount to max fillable by user, up to order amount
+    const userMax = isBuy ? Math.floor(userCredits / order.price) : userCredits;
+    setFillAmount(Math.min(order.amount, userMax));
+  }, [order, userCredits, isBuy]);
+  
+  const handleChange = (e) => {
+    let val = parseInt(e.target.value);
+    if (isNaN(val)) val = 0;
+    if (val < 0) val = 0;
+    
+    // User is SELLING to a BUY order
+    if (isBuy) {
+       // Cannot sell more than user has credits, or more than buyer wants
+       val = Math.min(val, userCredits, order.amount);
+    } 
+    // User is BUYING from a SELL order
+    else {
+      // Cannot buy more than seller has, or more than user can afford
+      val = Math.min(val, order.amount, Math.floor(userCredits / order.price));
+    }
+    setFillAmount(val);
+  };
+  
+  const handleConfirm = () => {
+    if (fillAmount > 0) {
+      onConfirmFill(order, fillAmount);
+    }
+  };
+
+  return (
+    <Modal title={t('fillOrder')} onClose={onClose}>
+      <div className="space-y-4">
+        <p>{isBuy ? t('sellTo') : t('buyFrom')} order of <strong className="text-gray-900 dark:text-white">{formatNumber(order.amount)} kWh</strong> at <strong className="text-gray-900 dark:text-white">{order.price.toFixed(2)}</strong> credits/kWh.</p>
+        
+        <div>
+          <label htmlFor="fill-amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300">{t('fillAmount')}</label>
+          <div className="mt-1 relative rounded-md shadow-sm">
+            <input
+              type="number"
+              id="fill-amount"
+              value={fillAmount}
+              onChange={handleChange}
+              className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              max={order.amount}
+              min="0"
+            />
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {t('available')}: {isBuy ? Math.min(order.amount, userCredits) : maxFillable} kWh
+          </p>
+        </div>
+
+        <div className="text-lg font-semibold text-gray-900 dark:text-white">
+          Total Cost: {formatNumber(cost.toFixed(2))} credits
+        </div>
+        
+        <button
+          onClick={handleConfirm}
+          disabled={fillAmount <= 0}
+          className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-200 disabled:bg-gray-400"
+        >
+          {t('confirm')}
+        </button>
+      </div>
+    </Modal>
+  );
+};
+
+// --- New Payment Modal ---
+const PaymentModal = ({ onClose, t, addNotification }) => {
+  const [tab, setTab] = useState('deposit'); // 'deposit', 'withdraw', 'bank'
+  
+  const handleSimulate = (action) => {
+    addNotification(`${action} simulation successful!`, 'success');
+    onClose();
+  };
+
+  return (
+    <Modal title={t('paymentTitle')} onClose={onClose}>
+      <div className="w-full">
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
+          <button
+            onClick={() => setTab('deposit')}
+            className={`px-4 py-2 font-medium ${tab === 'deposit' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}
+          >{t('deposit')}</button>
+          <button
+            onClick={() => setTab('withdraw')}
+            className={`px-4 py-2 font-medium ${tab === 'withdraw' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}
+          >{t('withdraw')}</button>
+          <button
+            onClick={() => setTab('bank')}
+            className={`px-4 py-2 font-medium ${tab === 'bank' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}
+          >{t('bankDetails')}</button>
+        </div>
+
+        {/* Content */}
+        <div className="animate-fade-in">
+          {tab === 'deposit' && (
+            <div className="space-y-4">
+              <p>{t('depositDesc')}</p>
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="deposit-amount">{t('depositAmount')}</label>
+                <input type="number" id="deposit-amount" placeholder="e.g., 500" className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700" />
+              </div>
+              <button onClick={() => handleSimulate('Deposit')} className="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">
+                {t('depositBtn')}
+              </button>
+            </div>
+          )}
+          {tab === 'withdraw' && (
+            <div className="space-y-4">
+              <p>{t('withdrawDesc')}</p>
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="withdraw-amount">{t('withdrawAmount')}</label>
+                <input type="number" id="withdraw-amount" placeholder="e.g., 100" className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700" />
+              </div>
+              <button onClick={() => handleSimulate('Withdrawal')} className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
+                {t('withdrawBtn')}
+              </button>
+            </div>
+          )}
+          {tab === 'bank' && (
+            <div className="space-y-4">
+              <p>{t('bankDesc')}</p>
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="acc-holder">{t('accountHolder')}</label>
+                <input type="text" id="acc-holder" className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="acc-num">{t('accountNumber')}</label>
+                <input type="text" id="acc-num" className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="ifsc">{t('ifscCode')}</label>
+                <input type="text" id="ifsc" className="w-full bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-2 rounded-lg border border-gray-300 dark:border-gray-700" />
+              </div>
+              <button onClick={() => handleSimulate('Bank Details')} className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
+                {t('saveBankBtn')}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+// --- New Toast Notification System ---
+const Toast = ({ message, type, onClose }) => {
+  const [exiting, setExiting] = useState(false);
+
+  const icons = {
+    success: <CheckCircle className="text-green-500" size={20} />,
+    error: <XCircle className="text-red-500" size={20} />,
+    info: <Info className="text-blue-500" size={20} />,
+  };
+  
+  const colors = {
+    success: 'bg-green-50 dark:bg-green-900 border-green-200 dark:border-green-700',
+    error: 'bg-red-50 dark:bg-red-900 border-red-200 dark:border-red-700',
+    info: 'bg-blue-50 dark:bg-blue-900 border-blue-200 dark:border-blue-700',
+  }
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setExiting(true);
+      setTimeout(onClose, 300); // Wait for exit animation
+    }, 3000); // Auto-dismiss after 3 seconds
+
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className={`w-full max-w-sm bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-4 border ${colors[type] || 'bg-gray-50 dark:bg-gray-700'} ${exiting ? 'animate-toast-exit' : 'animate-toast-enter'}`}>
+      <div className="flex items-start">
+        <div className="flex-shrink-0">
+          {icons[type] || icons.info}
+        </div>
+        <div className="ml-3 w-0 flex-1 pt-0.5">
+          <p className="text-sm font-medium text-gray-900 dark:text-white">{message.title}</p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{message.description}</p>
+        </div>
+        <div className="ml-4 flex-shrink-0 flex">
+          <button
+            onClick={() => {
+              setExiting(true);
+              setTimeout(onClose, 300);
+            }}
+            className="rounded-md inline-flex text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <span className="sr-only">Close</span>
+            <X size={20} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ToastContainer = ({ notifications, onRemove }) => (
+  <div className="fixed top-4 right-4 z-50 w-full max-w-sm space-y-3">
+    {notifications.map(n => (
+      <Toast
+        key={n.id}
+        message={n.message}
+        type={n.type}
+        onClose={() => onRemove(n.id)}
+      />
+    ))}
+  </div>
+);
+
+
+/**
+ * ============================================
+ * MAIN APP COMPONENT
+ * ============================================
+ */
+export default function App() {
+  const [page, setPage] = useState('Dashboard');
+  const [userId, setUserId] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [theme, setTheme] = useState('dark');
+  const [language, setLanguage] = useState('en');
+  const [notifications, setNotifications] = useState([]); // New Toast state
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false); // New Payment Modal state
+
+  // --- Firestore Data State ---
+  const [cityBlocks, setCityBlocks] = useState([]);
+  const [userPortfolio, setUserPortfolio] = useState(null);
+  const [marketOrders, setMarketOrders] = useState([]);
+  
+  // --- Modal State ---
+  const [selectedBlock, setSelectedBlock] = useState(null);
+  // setMessage is now deprecated in favor of addNotification
+  // const [message, setMessage] = useState(null);
+  const [fillOrder, setFillOrder] = useState(null); // For partial fill modal
+
+  // --- I18n Helper ---
+  const t = useCallback((key) => {
+    return translations[language][key] || key;
+  }, [language]);
+
+  // --- Theme Effect ---
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
+  // --- Notification Helper ---
+  const addNotification = useCallback((title, description, type = 'info') => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message: { title, description }, type }]);
+  }, []);
+  
+  const removeNotification = useCallback((id) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
+  // --- DERIVED STATE ---
+  const gridStats = useMemo(() => {
+    const totalGeneration = cityBlocks.reduce((sum, block) => sum + block.totalGeneration, 0);
+    // In a real app, consumption would come from another source. We'll simulate it.
+    const totalConsumption = cityBlocks.reduce((sum, block) => sum + block.totalGeneration * (Math.random() * 0.2 + 0.8), 0);
+    const status = totalGeneration > totalConsumption ? 'Surplus' : 'Deficit';
+    return { 
+      totalGeneration: Math.round(totalGeneration), 
+      totalConsumption: Math.round(totalConsumption), 
+      status 
+    };
+  }, [cityBlocks]);
+  
+  // --- DATA SEEDING ---
+  // Seed initial data for city blocks if they don't exist
+  const seedCityBlocks = useCallback(async () => {
+    console.log("Checking if city blocks need seeding...");
+    try {
+      const collectionRef = collection(db, `artifacts/${appId}/public/data/cityBlocks`);
+      const snapshot = await getDocs(collectionRef);
+      if (snapshot.empty) {
+        console.log("No blocks found. Seeding...");
+        const batch = writeBatch(db);
+        CITY_BLOCKS.forEach(blockData => {
+          const docRef = doc(collectionRef, blockData.id);
+          batch.set(docRef, {
+            ...blockData,
+            panelCount: Math.floor(Math.random() * 100) + 50,
+            totalGeneration: Math.floor(Math.random() * 200) + 50,
+            avgHealth: Math.random() * 20 + 80, // 80-100%
+          });
+        });
+        await batch.commit();
+        console.log("City blocks seeded successfully.");
+      } else {
+        console.log("City blocks already exist.");
+      }
+    } catch (error) {
+      console.error("Error seeding city blocks:", error);
+    }
+  }, [appId, db]); // Added db and appId dependencies
+  
+  // Create a default portfolio for the user if it doesn't exist
+  const seedUserPortfolio = useCallback(async (uid) => {
+    if (!uid) return;
+    console.log(`Checking portfolio for user ${uid}...`);
+    try {
+      const userDocRef = doc(db, `artifacts/${appId}/users/${uid}/portfolio/stats`);
+      const docSnap = await getDoc(userDocRef);
+      if (!docSnap.exists()) {
+        console.log("Creating default portfolio...");
+        await setDoc(userDocRef, {
+          generation: Math.floor(Math.random() * 50) + 20,
+          consumption: Math.floor(Math.random() * 30) + 10,
+          credits: 100, // Starting credits
+          panelHealth: Math.random() * 10 + 90, // 90-100%
+        });
+        console.log("Default portfolio created.");
+      } else {
+         console.log("User portfolio already exists.");
+      }
+    } catch (error) {
+      console.error("Error creating user portfolio:", error);
+    }
+  }, [appId, db]); // Added db and appId dependencies
+
+  // --- FIREBASE AUTH & DATA LISTENERS ---
+  useEffect(() => {
+    // 1. Initialize Auth
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        console.log("User is signed in:", user.uid);
+        setUserId(user.uid);
+        await seedUserPortfolio(user.uid);
+        setIsAuthReady(true);
+      } else {
+        console.log("User is signed out.");
+        setUserId(null);
+        setIsAuthReady(true);
+      }
+    });
+
+    const attemptSignIn = async () => {
+      try {
+        if (initialAuthToken) {
+          console.log("Signing in with custom token...");
+          await signInWithCustomToken(auth, initialAuthToken);
+        } else {
+          console.log("Signing in anonymously...");
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Error signing in:", error);
+      }
+    };
+    
+    attemptSignIn();
+
+    return () => unsubscribeAuth();
+  }, [seedUserPortfolio]);
+  
+  // 2. Attach Data Listeners once Auth is ready
+  useEffect(() => {
+    // MODIFICATION:
+    // We must wait for BOTH auth to be ready AND for a userId to exist.
+    // The security rules require an authenticated user for ALL reads/writes.
+    if (!isAuthReady || !userId) {
+      // If auth isn't ready, wait.
+      // If auth IS ready but userId is null, it means sign-in failed or user is signed out.
+      // In either case, we can't query Firestore.
+      setIsLoading(false); // We're not loading data
+      setCityBlocks([]); // Clear data
+      setMarketOrders([]); // Clear data
+      setUserPortfolio(null); // Clear data
+      return;
+    }
+    
+    setIsLoading(true);
+    let unsubscribers = [];
+
+    // Listener for City Blocks (Public)
+    try {
+      const blocksQuery = query(collection(db, `artifacts/${appId}/public/data/cityBlocks`));
+      const unsubBlocks = onSnapshot(blocksQuery, (snapshot) => {
+        const blocks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCityBlocks(blocks);
+        console.log("Updated city blocks:", blocks.length);
+      }, (error) => console.error("Error listening to city blocks:", error));
+      unsubscribers.push(unsubBlocks);
+      
+      // Seed blocks if listener returns empty
+      seedCityBlocks();
+      
+    } catch(e) { console.error("Failed to query cityBlocks", e)}
+
+    // Listener for Market Orders (Public)
+    try {
+      const ordersQuery = query(collection(db, `artifacts/${appId}/public/data/marketOrders`));
+      const unsubOrders = onSnapshot(ordersQuery, (snapshot) => {
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setMarketOrders(orders);
+        console.log("Updated market orders:", orders.length);
+      }, (error) => console.error("Error listening to market orders:", error));
+      unsubscribers.push(unsubOrders);
+    } catch(e) { console.error("Failed to query marketOrders", e)}
+
+    // Listener for User Portfolio (Private)
+    if (userId) { // This check is redundant now but harmless
+      try {
+        const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/portfolio/stats`);
+        const unsubPortfolio = onSnapshot(userDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setUserPortfolio(docSnap.data());
+            console.log("Updated user portfolio.");
+          } else {
+            console.log("User portfolio doc not found, will be created.");
+          }
+        }, (error) => console.error("Error listening to user portfolio:", error));
+        unsubscribers.push(unsubPortfolio);
+      } catch(e) { console.error("Failed to query user portfolio", e)}
+    }
+    
+    setIsLoading(false);
+    
+    // Cleanup listeners
+    return () => unsubscribers.forEach(unsub => unsub());
+
+  }, [isAuthReady, userId, seedCityBlocks, appId, db]); // Added appId and db
+  
+  
+  // --- LIVE DATA SIMULATOR ---
+  // This useEffect simulates real-time data changes in the city blocks
+  useEffect(() => {
+    // We also need to guard the simulator
+    if (!userId) {
+      return;
+    }
+
+    const simulator = setInterval(async () => {
+      console.log("Simulator: Updating block generation...");
+      try {
+         const collectionRef = collection(db, `artifacts/${appId}/public/data/cityBlocks`);
+         const snapshot = await getDocs(collectionRef);
+         if(snapshot.empty) return; // Don't run if empty
+         
+         const batch = writeBatch(db);
+         snapshot.docs.forEach(docSnap => {
+            const docRef = doc(collectionRef, docSnap.id);
+            const currentGen = docSnap.data().totalGeneration;
+            const change = (Math.random() - 0.5) * 20; // Fluctuate by +/- 10
+            let newGen = Math.max(50, currentGen + change); // Keep it above 50
+            newGen = Math.round(newGen);
+            batch.update(docRef, { totalGeneration: newGen });
+         });
+         await batch.commit();
+         
+      } catch (error) {
+        console.error("Simulator error:", error);
+      }
+    }, 5000); // Update every 5 seconds
+
+    return () => clearInterval(simulator);
+  }, [appId, db, userId]); // Added appId, db, and userId
+
+
+  // --- EVENT HANDLERS ---
+
+  const handleSimulateConsumption = async () => {
+    if (!userId || !userPortfolio) return;
+    
+    const newConsumption = userPortfolio.consumption + 10;
+    const newCredits = userPortfolio.credits - 10; // Consuming costs credits
+    
+    if (newCredits < 0) {
+      addNotification(t('errNoCreditsConsume'), '', 'error');
+      return;
+    }
+    
+    try {
+      const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/portfolio/stats`);
+      await setDoc(userDocRef, { 
+        ...userPortfolio,
+        consumption: newConsumption,
+        credits: newCredits,
+      }, { merge: true });
+      console.log("Simulated consumption.");
+    } catch (error) {
+      console.error("Error simulating consumption:", error);
+      addNotification(t('errSimulate'), error.message, 'error');
+    }
+  };
+
+  const handlePostOrder = async (type, amount, price, errorMsg) => {
+    if (!userId || !userPortfolio) return;
+    
+    const amountNum = Number(amount);
+    const priceNum = Number(price);
+
+    if (type === 'sell' && amountNum > userPortfolio.credits) {
+      addNotification(errorMsg, '', 'error'); // Use translated error message
+      return;
+    }
+
+    try {
+      // If selling, deduct credits from portfolio immediately (escrow)
+      if (type === 'sell') {
+        const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/portfolio/stats`);
+        await setDoc(userDocRef, {
+          credits: userPortfolio.credits - amountNum
+        }, { merge: true });
+      }
+
+      // Add the order to the public market
+      const ordersColRef = collection(db, `artifacts/${appId}/public/data/marketOrders`);
+      await addDoc(ordersColRef, {
+        type,
+        amount: amountNum,
+        price: priceNum,
+        sellerId: userId,
+        status: 'open',
+        createdAt: serverTimestamp(),
+      });
+      
+      addNotification(t('orderPlaced'), t('orderSuccess'), 'success');
+
+    } catch (error) {
+      console.error("Error posting order:", error);
+      addNotification(t('errPostOrder'), error.message, 'error');
+    }
+  };
+  
+  const handleInitiateFill = (order) => {
+    if (!userId) return;
+    // --- CANCEL LOGIC ---
+    if (order.sellerId === userId) {
+      console.log("Canceling order...");
+      handleCancelOrder(order);
+    } else {
+    // --- INITIATE FILL LOGIC ---
+      setFillOrder(order);
+    }
+  };
+
+  const handleCancelOrder = async (order) => {
+    if (!userId || !userPortfolio || order.sellerId !== userId) return;
+    
+    try {
+      const batch = writeBatch(db);
+      
+      // 1. Delete the order
+      const orderDocRef = doc(db, `artifacts/${appId}/public/data/marketOrders`, order.id);
+      batch.delete(orderDocRef);
+
+      // 2. Refund credits if it was a sell order
+      if (order.type === 'sell') {
+        const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/portfolio/stats`);
+        batch.update(userDocRef, {
+          credits: userPortfolio.credits + order.amount
+        });
+      }
+      // (If it was a buy order, no funds were escrowed, so just delete)
+      
+      await batch.commit();
+      addNotification(t('orderCanceled'), '', 'info');
+    } catch(e) {
+      console.error("Error canceling order:", e);
+      addNotification(t('errCancelOrder'), e.message, 'error');
+    }
+  };
+
+  const handleConfirmPartialFill = async (order, amountToFill) => {
+      if (!userId || !userPortfolio || !order || amountToFill <= 0) return;
+      
+      console.log(`Filling order ${order.id} with amount ${amountToFill}`);
+      const cost = amountToFill * order.price;
+      const batch = writeBatch(db);
+      
+      // References
+      const orderDocRef = doc(db, `artifacts/${appId}/public/data/marketOrders`, order.id);
+      const currentUserDocRef = doc(db, `artifacts/${appId}/users/${userId}/portfolio/stats`);
+
+      try {
+        if (order.type === 'sell') { // User is BUYING from a SELLER
+          const sellerDocRef = doc(db, `artifacts/${appId}/users/${order.sellerId}/portfolio/stats`);
+          
+          if (userPortfolio.credits < cost) {
+            addNotification(t('errNoCreditsBuy'), '', 'error');
+            return;
+          }
+          // 1. Debit buyer's (current user) credits
+          batch.update(currentUserDocRef, { credits: userPortfolio.credits - cost });
+          
+          // 2. Credit seller's credits
+          const sellerSnap = await getDoc(sellerDocRef);
+          if (!sellerSnap.exists()) throw new Error(t('errSellerNotFound'));
+          const sellerPortfolio = sellerSnap.data();
+          batch.update(sellerDocRef, { credits: sellerPortfolio.credits + cost });
+          
+          // 3. Update or Delete the order
+          if (amountToFill < order.amount) {
+            batch.update(orderDocRef, { amount: order.amount - amountToFill });
+          } else {
+            batch.delete(orderDocRef);
+          }
+          
+          addNotification(t('orderFilled'), t('buySuccess').replace('{amount}', amountToFill), 'success');
+
+        } else { // order.type === 'buy'. User is SELLING to a BUYER
+          const buyerId = order.sellerId; // The "sellerId" on a buy order is the buyer
+          const buyerRef = doc(db, `artifacts/${appId}/users/${buyerId}/portfolio/stats`);
+
+          if (userPortfolio.credits < amountToFill) {
+             addNotification(t('errBuyNoCredits'), '', 'error');
+             return;
+          }
+
+          // Get buyer data
+          const buyerSnap = await getDoc(buyerRef);
+          if (!buyerSnap.exists()) throw new Error(t('errBuyerNotFound'));
+          const buyerPortfolio = buyerSnap.data();
+
+          if (buyerPortfolio.credits < cost) {
+            addNotification(t('errBuyerNoCredits'), '', 'error');
+            return;
+          }
+          
+          // 1. Debit buyer's credits
+          batch.update(buyerRef, { credits: buyerPortfolio.credits - cost });
+          // 2. Credit seller's (current user) credits
+          // User already paid `amountToFill` (escrow) when placing sell order.
+          // Wait, no, this is a BUY order. User (seller) has not paid escrow.
+          // User (seller) needs to have `amountToFill` credits to sell.
+          batch.update(currentUserDocRef, { credits: userPortfolio.credits - amountToFill + cost });
+          
+          // 3. Update or Delete the order
+          if (amountToFill < order.amount) {
+            batch.update(orderDocRef, { amount: order.amount - amountToFill });
+          } else {
+            batch.delete(orderDocRef);
+          }
+
+          addNotification(t('orderFilled'), t('sellSuccess').replace('{amount}', amountToFill), 'success');
+        }
+        
+        await batch.commit();
+
+      } catch (error) {
+        console.error("Error filling order:", error);
+        addNotification(t('errFillOrder'), error.message, 'error');
+      }
+      
+      setFillOrder(null); // Close modal
+  };
+
+
+  // --- RENDER LOGIC ---
+
+  const renderPage = () => {
+    if (isLoading || !isAuthReady) { // Keep !isAuthReady check for initial load spinner
+      return <LoadingSpinner text="Connecting to SolarGrid..." />;
+    }
+    
+    // NEW: If auth is ready but we have no user, show a message
+    if (isAuthReady && !userId) {
+      return <LoadingSpinner text="Authentication failed. Please reload." />;
+    }
+
+    switch (page) {
+      case 'Dashboard':
+        return <DashboardPage cityBlocks={cityBlocks} gridStats={gridStats} t={t} />;
+      case 'Live Map':
+        return <LiveMapPage cityBlocks={cityBlocks} onBlockClick={setSelectedBlock} t={t} />;
+      case 'My Portfolio':
+        return <MyPortfolioPage userId={userId} portfolio={userPortfolio} onSimulateConsumption={handleSimulateConsumption} t={t} />;
+      case 'Marketplace':
+        return <MarketplacePage 
+                  userId={userId} 
+                  userCredits={userPortfolio?.credits || 0} 
+                  marketOrders={marketOrders} 
+                  onPostOrder={handlePostOrder}
+                  onInitiateFill={handleInitiateFill}
+                  t={t}
+                />;
+      case 'Analytics':
+        return <AnalyticsPage t={t} />;
+      case 'Guidelines': // New Page
+        return <GuidelinesPage t={t} />;
+      default:
+        return <DashboardPage cityBlocks={cityBlocks} gridStats={gridStats} t={t} />;
+    }
+  };
+
+  const LanguageSwitcher = () => (
+    <div className="relative">
+      <select
+        onChange={(e) => setLanguage(e.target.value)}
+        value={language}
+        className="appearance-none w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white py-2 px-3 pr-8 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="en">English</option>
+        <option value="hi">हिंदी (Hindi)</option>
+        <option value="ta">தமிழ் (Tamil)</option>
+        <option value="bn">বাংলা (Bengali)</option>
+      </select>
+      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500 dark:text-gray-400">
+        <Languages size={16} />
+      </div>
+    </div>
+  );
+
+  const ThemeToggle = () => (
+    <button
+      onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+      className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+    >
+      {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+    </button>
+  );
+  
+  // New Header Component
+  const AppHeader = () => (
+    <div className="w-full h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 flex items-center justify-between px-4 md:px-8">
+      <div>
+        {/* Can add page title here later */}
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{t(page.toLowerCase().replace(' ', ''))}</h1>
+      </div>
+      <div className="flex items-center space-x-4">
+        <LanguageSwitcher />
+        <ThemeToggle />
+        <button
+          onClick={() => setIsPaymentModalOpen(true)}
+          className="flex items-center space-x-2 p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+        >
+          <Wallet size={20} />
+          <span className="hidden md:inline text-sm font-medium">{t('wallet')}</span>
+        </button>
+         <button
+          onClick={() => {
+            auth.signOut();
+            setUserId(null); // Simulate logout
+          }}
+          className="flex items-center space-x-2 p-2 rounded-full text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900"
+        >
+          <LogOut size={20} />
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex h-screen w-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-inter transition-colors duration-200">
+      {/* --- Sidebar Navigation --- */}
+      <nav className="w-64 bg-white dark:bg-gray-800 shadow-xl flex-shrink-0 border-r border-gray-200 dark:border-gray-700 hidden md:flex md:flex-col">
+        <div className="p-4 md:p-6 flex items-center space-x-3">
+            {/* Logo */}
+            <svg className="w-10 h-10 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">SolarGrid</span>
+        </div>
+        <div className="p-2 md:p-4 space-y-1 flex-grow">
+          {PAGES.map(pKey => {
+            const p = t(pKey.toLowerCase().replace(/ /g, '')); // e.g., 'liveMap', 'myPortfolio'
+            const icons = {
+              [t('dashboard')]: <LayoutDashboard size={20} />,
+              [t('liveMap')]: <MapIcon size={20} />,
+              [t('myPortfolio')]: <User size={20} />,
+              [t('marketplace')]: <BarChartHorizontal size={20} />,
+              [t('analytics')]: <PieChart size={20} />,
+              [t('guidelines')]: <ScrollText size={20} />, // New Icon
+            };
+            return (
+              <button
+                key={pKey}
+                onClick={() => setPage(pKey)}
+                className={`w-full text-left flex items-center space-x-3 px-4 py-3 rounded-lg font-medium transition-colors duration-200
+                  ${page === pKey ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 dark:hover:text-white'}`}
+              >
+                {icons[p] || <div className="w-5 h-5" />}
+                <span>{p}</span>
+              </button>
+            )
+          })}
+        </div>
+        <div className="p-4 mt-auto w-full">
+           <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
+             <span className="text-xs text-gray-500 dark:text-gray-400 block">{t('status')}</span>
+             <span className="text-sm font-medium text-green-600 dark:text-green-400">{t('online')}</span>
+           </div>
+        </div>
+      </nav>
+
+      {/* --- Main Content Area --- */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <AppHeader />
+        <main className="flex-1 overflow-y-auto">
+          {renderPage()}
+        </main>
+      </div>
+      
+      {/* --- Modals & Toasts --- */}
+      <ToastContainer notifications={notifications} onRemove={removeNotification} />
+      
+      {selectedBlock && (
+        <Modal title={selectedBlock.name} onClose={() => setSelectedBlock(null)}>
+          <div className="space-y-3">
+            <p><strong>{t('status')}:</strong> <span className="text-green-600 dark:text-green-400">{t('online')}</span></p>
+            <p><strong>{t('liveGen')}:</strong> <span className="font-bold text-lg text-gray-900 dark:text-white">{formatNumber(selectedBlock.totalGeneration)} kWh</span></p>
+            <p><strong>{t('avgHealth')}:</strong> <span className={`font-bold text-lg ${getHealthColor(selectedBlock.avgHealth)}`}>{selectedBlock.avgHealth.toFixed(1)}%</span></p>
+            <p><strong>{t('panelCount')}:</strong> <span className="font-bold text-lg text-gray-900 dark:text-white">{selectedBlock.panelCount}</span></p>
+          </div>
+        </Modal>
+      )}
+      
+      {fillOrder && (
+        <PartialFillModal
+          order={fillOrder}
+          userCredits={userPortfolio?.credits || 0}
+          onClose={() => setFillOrder(null)}
+          onConfirmFill={handleConfirmPartialFill}
+          t={t}
+        />
+      )}
+
+      {isPaymentModalOpen && (
+        <PaymentModal
+          onClose={() => setIsPaymentModalOpen(false)}
+          t={t}
+          addNotification={addNotification}
+        />
+      )}
+      
+      {/* Global CSS for animations */}
+      <style>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fade-in 0.3s ease-out; }
+        
+        @keyframes pulse-strong {
+          0%, 100% { border-color: rgba(52, 211, 153, 0.7); box-shadow: 0 0 10px rgba(52, 211, 153, 0.3); }
+          50% { border-color: rgba(52, 211, 153, 1); box-shadow: 0 0 15px rgba(52, 211, 153, 0.7); }
+        }
+        .dark .animate-pulse-strong {
+          0%, 100% { border-color: rgba(52, 211, 153, 0.7); box-shadow: 0 0 10px rgba(52, 211, 153, 0.3); }
+          50% { border-color: rgba(52, 211, 153, 1); box-shadow: 0 0 15px rgba(52, 211, 153, 0.7); }
+        }
+        .animate-pulse-strong { animation: pulse-strong 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        
+        /* New Toast Animations */
+        @keyframes toast-enter {
+          from { opacity: 0; transform: translateX(100%); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        .animate-toast-enter { animation: toast-enter 0.3s ease-out; }
+        
+        @keyframes toast-exit {
+          from { opacity: 1; transform: translateX(0); }
+          to { opacity: 0; transform: translateX(100%); }
+        }
+        .animate-toast-exit { animation: toast-exit 0.3s ease-in; }
+
+        /* Inter font import */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        .font-inter { font-family: 'Inter', sans-serif; }
+        
+        .cursor-pointer { cursor: pointer; }
+      `}</style>
+    </div>
+  );
+}
+
